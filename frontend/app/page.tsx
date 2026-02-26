@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080';
+
 interface PriceData {
   ticker: string;
   price: string;
@@ -34,7 +36,7 @@ export default function Home() {
     }
 
     console.log('Creating EventSource connection...');
-    const eventSource = new EventSource('http://localhost:8080/events');
+    const eventSource = new EventSource(`${BACKEND_URL}/events`);
     eventSourceRef.current = eventSource;
 
     eventSource.onopen = () => {
@@ -83,7 +85,7 @@ export default function Home() {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8080/subscribe', {
+      const response = await fetch(`${BACKEND_URL}/subscribe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -112,7 +114,7 @@ export default function Home() {
     console.log(`Unsubscribing from ${ticker}...`);
 
     try {
-      const response = await fetch('http://localhost:8080/unsubscribe', {
+      const response = await fetch(`${BACKEND_URL}/unsubscribe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
