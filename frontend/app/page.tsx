@@ -354,6 +354,23 @@ export default function Home() {
               ) : 'Add Ticker'}
             </button>
           </div>
+          <div style={{
+            marginTop: '15px',
+            padding: '12px 20px',
+            background: 'rgba(217, 119, 6, 0.08)',
+            border: '1px solid rgba(217, 119, 6, 0.25)',
+            borderRadius: '12px',
+            color: '#fbbf24',
+            fontSize: '0.9rem',
+            fontWeight: '500',
+            lineHeight: '1.6',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px'
+          }}>
+            <span>⏳&nbsp; Adding a ticker may take 10–30 seconds — Playwright is loading the page on the server.</span>
+            <span>🗑&nbsp; Please remove tickers after testing to free up server resources.</span>
+          </div>
           {error && (
             <div style={{
               marginTop: '15px',
