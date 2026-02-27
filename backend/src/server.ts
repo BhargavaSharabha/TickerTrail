@@ -13,15 +13,17 @@ const clients = new Map<string, Client>();
 let clientIdCounter = 0;
 const tickerCallbacks = new Map<string, (price: string) => void>();
 
-function broadcast(ticker: string, price: string) {
+function broadcast(key: string, price: string) {
+  const [exchange, ticker] = key.split(':');
   const message = JSON.stringify({
     ticker,
+    exchange,
     price,
     timestamp: Date.now()
   });
 
   for (const client of clients.values()) {
-    if (client.tickers.has(ticker)) {
+    if (client.tickers.has(key)) {
       client.res.write(`data: ${message}\n\n`);
     }
   }
@@ -64,18 +66,20 @@ async function handleSubscribe(req: any, res: any) {
 
   req.on('end', async () => {
     try {
-      const { ticker } = JSON.parse(body);
+      const { ticker, exchange } = JSON.parse(body);
       const upperTicker = ticker.toUpperCase();
+      const upperExchange = (exchange || 'BINANCE').toUpperCase();
+      const key = `${upperExchange}:${upperTicker}`;
 
-      console.log(`Subscription request for ${upperTicker}`);
+      console.log(`Subscription request for ${key}`);
 
       // Start scraping and validate ticker
-      const callback = (price: string) => broadcast(upperTicker, price);
-      tickerCallbacks.set(upperTicker, callback);
-      const result = await priceScraper.addTicker(upperTicker, callback);
+      const callback = (price: string) => broadcast(key, price);
+      tickerCallbacks.set(key, callback);
+      const result = await priceScraper.addTicker(upperTicker, upperExchange, callback);
 
       if (!result.success) {
-        tickerCallbacks.delete(upperTicker);
+        tickerCallbacks.delete(key);
         res.writeHead(400, {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
@@ -86,14 +90,14 @@ async function handleSubscribe(req: any, res: any) {
 
       // Add ticker to all connected clients after validation
       for (const client of clients.values()) {
-        client.tickers.add(upperTicker);
+        client.tickers.add(key);
       }
 
       // Broadcast current price immediately — the initial callback fired before
       // clients had the ticker, so push it now that they're subscribed
-      const currentPrice = priceScraper.getPrice(upperTicker);
+      const currentPrice = priceScraper.getPrice(key);
       if (currentPrice) {
-        broadcast(upperTicker, currentPrice);
+        broadcast(key, currentPrice);
       }
 
       res.writeHead(200, {
@@ -121,21 +125,23 @@ async function handleUnsubscribe(req: any, res: any) {
 
   req.on('end', async () => {
     try {
-      const { ticker } = JSON.parse(body);
+      const { ticker, exchange } = JSON.parse(body);
       const upperTicker = ticker.toUpperCase();
+      const upperExchange = (exchange || 'BINANCE').toUpperCase();
+      const key = `${upperExchange}:${upperTicker}`;
 
-      console.log(`Unsubscribe request for ${upperTicker}`);
+      console.log(`Unsubscribe request for ${key}`);
 
       // Remove ticker from all clients
       for (const client of clients.values()) {
-        client.tickers.delete(upperTicker);
+        client.tickers.delete(key);
       }
 
       // Stop scraping
-      const callback = tickerCallbacks.get(upperTicker);
+      const callback = tickerCallbacks.get(key);
       if (callback) {
-        tickerCallbacks.delete(upperTicker);
-        await priceScraper.removeTicker(upperTicker, callback);
+        tickerCallbacks.delete(key);
+        await priceScraper.removeTicker(upperTicker, upperExchange, callback);
       }
 
       res.writeHead(200, {

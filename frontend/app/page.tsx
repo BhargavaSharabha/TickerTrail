@@ -6,6 +6,7 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:808
 
 interface PriceData {
   ticker: string;
+  exchange: string;
   price: string;
   timestamp: number;
 }
@@ -17,6 +18,7 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [selectedExchange, setSelectedExchange] = useState<string>('BINANCE');
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -48,11 +50,13 @@ export default function Home() {
       try {
         const data = JSON.parse(event.data);
         if (data.ticker && data.price) {
-          console.log(`Price update received: ${data.ticker} = ${data.price}`);
+          const key = `${data.exchange || 'BINANCE'}:${data.ticker}`;
+          console.log(`Price update received: ${key} = ${data.price}`);
           setPrices(prev => {
             const newPrices = new Map(prev);
-            newPrices.set(data.ticker, {
+            newPrices.set(key, {
               ticker: data.ticker,
+              exchange: data.exchange || 'BINANCE',
               price: data.price,
               timestamp: data.timestamp || Date.now()
             });
@@ -71,16 +75,17 @@ export default function Home() {
     };
   };
 
-  const subscribeTicker = async (ticker: string) => {
+  const subscribeTicker = async (ticker: string, exchange: string) => {
     const upperTicker = ticker.toUpperCase();
+    const key = `${exchange}:${upperTicker}`;
 
-    if (subscribedTickers.has(upperTicker)) {
-      console.log(`Already subscribed to ${upperTicker}`);
-      setError(`Already subscribed to ${upperTicker}`);
+    if (subscribedTickers.has(key)) {
+      console.log(`Already subscribed to ${key}`);
+      setError(`Already subscribed to ${key}`);
       return;
     }
 
-    console.log(`Subscribing to ${upperTicker}...`);
+    console.log(`Subscribing to ${key}...`);
     setLoading(true);
     setError('');
 
@@ -90,7 +95,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ticker: upperTicker }),
+        body: JSON.stringify({ ticker: upperTicker, exchange }),
       });
 
       const data = await response.json();
@@ -99,19 +104,20 @@ export default function Home() {
         throw new Error(data.error || `Failed to subscribe to ${upperTicker}`);
       }
 
-      setSubscribedTickers(prev => new Set([...prev, upperTicker]));
-      console.log(`Successfully subscribed to ${upperTicker}`);
+      setSubscribedTickers(prev => new Set([...prev, key]));
+      console.log(`Successfully subscribed to ${key}`);
       setSelectedTicker('');
     } catch (error: any) {
-      console.error(`Failed to subscribe to ${upperTicker}:`, error);
+      console.error(`Failed to subscribe to ${key}:`, error);
       setError(error.message || `Failed to subscribe to ${upperTicker}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const unsubscribeTicker = async (ticker: string) => {
-    console.log(`Unsubscribing from ${ticker}...`);
+  const unsubscribeTicker = async (key: string) => {
+    const [exchange, ticker] = key.split(':');
+    console.log(`Unsubscribing from ${key}...`);
 
     try {
       const response = await fetch(`${BACKEND_URL}/unsubscribe`, {
@@ -119,7 +125,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ticker }),
+        body: JSON.stringify({ ticker, exchange }),
       });
 
       if (!response.ok) {
@@ -128,19 +134,19 @@ export default function Home() {
 
       setSubscribedTickers(prev => {
         const newSet = new Set(prev);
-        newSet.delete(ticker);
+        newSet.delete(key);
         return newSet;
       });
 
       setPrices(prev => {
         const newPrices = new Map(prev);
-        newPrices.delete(ticker);
+        newPrices.delete(key);
         return newPrices;
       });
 
-      console.log(`Unsubscribed from ${ticker}`);
+      console.log(`Unsubscribed from ${key}`);
     } catch (error) {
-      console.error(`Failed to unsubscribe from ${ticker}:`, error);
+      console.error(`Failed to unsubscribe from ${key}:`, error);
     }
   };
 
@@ -150,7 +156,7 @@ export default function Home() {
       setError('Please enter a ticker symbol');
       return;
     }
-    subscribeTicker(trimmedTicker);
+    subscribeTicker(trimmedTicker, selectedExchange);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -271,6 +277,31 @@ export default function Home() {
                 {connected ? 'Live' : 'Disconnected'}
               </span>
             </div>
+
+            <select
+              value={selectedExchange}
+              onChange={(e) => setSelectedExchange(e.target.value)}
+              disabled={loading || !connected}
+              style={{
+                padding: '14px 16px',
+                fontSize: '1rem',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '2px solid rgba(147, 51, 234, 0.3)',
+                borderRadius: '12px',
+                color: '#ffffff',
+                fontWeight: '600',
+                cursor: 'pointer',
+                outline: 'none',
+                appearance: 'none',
+                WebkitAppearance: 'none'
+              }}
+            >
+              <option value="BINANCE" style={{ background: '#1a1a2e' }}>BINANCE</option>
+              <option value="COINBASE" style={{ background: '#1a1a2e' }}>COINBASE</option>
+              <option value="KRAKEN" style={{ background: '#1a1a2e' }}>KRAKEN</option>
+              <option value="BYBIT" style={{ background: '#1a1a2e' }}>BYBIT</option>
+              <option value="OKX" style={{ background: '#1a1a2e' }}>OKX</option>
+            </select>
 
             <div style={{ flex: 1, minWidth: '250px', position: 'relative' }}>
               <input
@@ -394,11 +425,12 @@ export default function Home() {
           gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
           gap: '20px'
         }}>
-          {sortedTickers.map(ticker => {
-            const priceData = prices.get(ticker);
+          {sortedTickers.map(key => {
+            const [exchange, ticker] = key.split(':');
+            const priceData = prices.get(key);
             return (
               <div
-                key={ticker}
+                key={key}
                 style={{
                   background: 'rgba(255, 255, 255, 0.03)',
                   backdropFilter: 'blur(10px)',
@@ -442,14 +474,23 @@ export default function Home() {
                     alignItems: 'flex-start',
                     marginBottom: '12px'
                   }}>
-                    <span style={{
-                      fontSize: '1.2rem',
-                      fontWeight: '700',
-                      color: '#ffffff',
-                      letterSpacing: '0.5px'
-                    }}>{ticker}</span>
+                    <div>
+                      <div style={{
+                        fontSize: '1.2rem',
+                        fontWeight: '700',
+                        color: '#ffffff',
+                        letterSpacing: '0.5px'
+                      }}>{ticker}</div>
+                      <div style={{
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        color: '#94a3b8',
+                        letterSpacing: '1px',
+                        marginTop: '2px'
+                      }}>{exchange}</div>
+                    </div>
                     <button
-                      onClick={() => unsubscribeTicker(ticker)}
+                      onClick={() => unsubscribeTicker(key)}
                       style={{
                         background: 'rgba(239, 68, 68, 0.1)',
                         border: '1px solid rgba(239, 68, 68, 0.3)',
