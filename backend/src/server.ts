@@ -11,6 +11,7 @@ interface Client {
 
 const clients = new Map<string, Client>();
 let clientIdCounter = 0;
+const tickerCallbacks = new Map<string, (price: string) => void>();
 
 function broadcast(ticker: string, price: string) {
   const message = JSON.stringify({
@@ -69,12 +70,12 @@ async function handleSubscribe(req: any, res: any) {
       console.log(`Subscription request for ${upperTicker}`);
 
       // Start scraping and validate ticker
-      const result = await priceScraper.addTicker(upperTicker, (price: string) => {
-        broadcast(upperTicker, price);
-      });
+      const callback = (price: string) => broadcast(upperTicker, price);
+      tickerCallbacks.set(upperTicker, callback);
+      const result = await priceScraper.addTicker(upperTicker, callback);
 
       if (!result.success) {
-        // Invalid ticker, return error
+        tickerCallbacks.delete(upperTicker);
         res.writeHead(400, {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
@@ -126,19 +127,15 @@ async function handleUnsubscribe(req: any, res: any) {
       console.log(`Unsubscribe request for ${upperTicker}`);
 
       // Remove ticker from all clients
-      let hasSubscribers = false;
       for (const client of clients.values()) {
         client.tickers.delete(upperTicker);
-        if (client.tickers.has(upperTicker)) {
-          hasSubscribers = true;
-        }
       }
 
-      // Stop scraping if no subscribers
-      if (!hasSubscribers) {
-        // We need to track the callback to remove it properly
-        // For now, we'll keep it simple
-        console.log(`No more subscribers for ${upperTicker}, stopping scraper`);
+      // Stop scraping
+      const callback = tickerCallbacks.get(upperTicker);
+      if (callback) {
+        tickerCallbacks.delete(upperTicker);
+        await priceScraper.removeTicker(upperTicker, callback);
       }
 
       res.writeHead(200, {
