@@ -88,6 +88,13 @@ async function handleSubscribe(req: any, res: any) {
         client.tickers.add(upperTicker);
       }
 
+      // Broadcast current price immediately — the initial callback fired before
+      // clients had the ticker, so push it now that they're subscribed
+      const currentPrice = priceScraper.getPrice(upperTicker);
+      if (currentPrice) {
+        broadcast(upperTicker, currentPrice);
+      }
+
       res.writeHead(200, {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*'

@@ -59,6 +59,10 @@ export class PriceScraper {
     return { success: true };
   }
 
+  getPrice(ticker: string): string | undefined {
+    return this.prices.get(ticker.toUpperCase());
+  }
+
   async removeTicker(ticker: string, callback: (price: string) => void) {
     const upperTicker = ticker.toUpperCase();
     console.log(`Removing ticker: ${upperTicker}`);
